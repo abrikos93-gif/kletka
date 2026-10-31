@@ -260,7 +260,7 @@ function addWorkout(o,reps){
 /* ---------- Бот вместо друга ---------- */
 function botDay(){
   if(Math.random()>4/7)return null;
-  const ex=G.exercises, reps={};
+  const ex=visibleEx(), reps={};
   for(let k=0;k<3;k++){const e=ex[Math.random()*ex.length|0];
     reps[e.name]=(reps[e.name]||0)+Math.round((15+Math.random()*25)*Math.min(3,1/e.w)*3)}
   addWorkout(FOE,reps);
@@ -468,9 +468,15 @@ const closeSheets=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList
 const openSheet=id=>{closeSheets();$('toast').classList.remove('show');$(id).classList.add('open')};
 
 let draft={};
+// Сезон только на отжимания: остальные упражнения скрыты, но их история и очки сохраняются.
+// Записи без поля hidden остались от старых карт.
+function visibleEx(){
+  if(G.exercises.some(e=>e.hidden===undefined))G.exercises.forEach(e=>{e.hidden=e.name!=='Отжимания'});
+  return G.exercises.filter(e=>!e.hidden);
+}
 function renderRows(){
   $('rows').innerHTML='';
-  G.exercises.forEach(ex=>{
+  visibleEx().forEach(ex=>{
     const row=document.createElement('div');row.className='row';
     const name=document.createElement('span');name.textContent=ex.name;
     const rep=document.createElement('input');rep.inputMode='numeric';rep.placeholder='0';rep.setAttribute('aria-label',ex.name+', повторы');
@@ -495,7 +501,10 @@ function startPen(){closeSheets();pen=true;undoStack=[];view={...fitView};dirty=
 $('bLog').onclick=()=>{draft={};renderRows();openSheet('sLog')};
 $('bLogClose').onclick=closeSheets;
 $('addForm').onsubmit=e=>{e.preventDefault();const n=$('addName').value.trim();
-  if(n&&!G.exercises.some(x=>x.name===n)){G.exercises.push({name:n,w:1});save();renderRows()}$('addName').value=''};
+  if(n){const known=G.exercises.find(x=>x.name===n);
+    if(known)known.hidden=false;else G.exercises.push({name:n,w:1,hidden:false});
+    save();renderRows()}
+  $('addName').value=''};
 $('bLogGo').onclick=async()=>{
   $('bLogGo').disabled=true;
   const free=await takePen();
