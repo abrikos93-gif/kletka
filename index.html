@@ -95,9 +95,9 @@ pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
   <h2>Что сделал</h2>
   <div class="row heads"><span>упражнение</span><span style="text-align:center">повторы</span><span style="text-align:center">очки</span></div>
   <div id="rows"></div>
-  <form class="add" id="addForm"><input id="addName" placeholder="Другое упражнение" aria-label="Название упражнения"><button>Добавить</button></form>
+  <form class="add" id="addForm" hidden><input id="addName" placeholder="Другое упражнение" aria-label="Название упражнения"><button>Добавить</button></form>
   <div class="sum" id="sum"></div>
-  <div class="acts"><button id="bLogClose">Закрыть</button><button id="bLogGo" class="primary">Взять ручку</button></div>
+  <div class="acts"><button id="bLogClose">Закрыть</button><button id="bLogGo" class="primary">Закрасить квадраты</button></div>
 </section>
 
 <section id="sReport" class="sheet" aria-label="Отчёт для канала">
@@ -462,7 +462,7 @@ function updateHud(){
   $('bankYou').textContent=`запас ${bank}`;$('bankFoe').textContent=`запас ${G.players[FOE].bank}`;
   $('left').innerHTML=`${bank}<small>${plural(bank,'клетка','клетки','клеток')} в запасе</small>`;
   $('bUndo').disabled=!undoStack.length;
-  $('bPen').hidden=!bank||pen;$('bPen').textContent=`Взять ручку: ${bank}`;
+  $('bPen').hidden=!bank||pen;$('bPen').textContent=`Закрасить квадраты: ${bank}`;
   $('viewBar').hidden=pen;$('penBar').hidden=!pen;
   $('bLog').disabled=$('bPen').disabled=G.over||!ready;
 }
@@ -586,7 +586,7 @@ $('bNew').onclick=async()=>{
 /* ---------- Обновление ---------- */
 // Telegram держит старую копию страницы. deploy.ps1 вписывает сюда номер сборки;
 // если на сайте сборка новее, страница перезагружается с новым адресом.
-const BUILD='20261101015513';
+const BUILD='20261101020123';
 async function checkUpdate(){
   if(!/^\d+$/.test(BUILD)||pen)return;
   try{
