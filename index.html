@@ -31,7 +31,7 @@ button:disabled{opacity:.4;cursor:default}
 .score b{display:block;font-weight:400;font-size:44px}
 .score small{display:block;font-size:18px;margin-top:3px}
 .score.you{color:var(--blue)} .score.foe{color:var(--red);text-align:right}
-#day{text-align:center;padding-top:6px;color:var(--soft);font-size:18px;line-height:1.1}
+#day{text-align:center;padding-top:6px;color:var(--soft);font-size:18px;line-height:1.2;white-space:pre-line}
 
 #bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;
   padding:8px 12px calc(env(safe-area-inset-bottom) + 12px)}
@@ -75,7 +75,7 @@ pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
 <div id="top">
   <div class="score you"><b id="sYou">0</b>ты<small id="bankYou"></small></div>
   <div id="day"></div>
-  <div class="score foe"><b id="sFoe">0</b>друг<small id="bankFoe"></small></div>
+  <div class="score foe"><b id="sFoe">0</b><span id="lFoe">друг</span><small id="bankFoe"></small></div>
 </div>
 
 <div id="bar">
@@ -120,10 +120,15 @@ pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
 
 <div id="toast" role="status"></div>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 'use strict';
 const COLS=26, ROWS=38, SEASON_DAYS=28, REPS_PER_CELL=10, FORTIFY_AGE=7, KEY='kletka.v1';
-const YOU=0, FOE=1, DAY_MS=864e5;
+const DAY_MS=864e5;
+// Адрес серверной функции. Вне Telegram страница работает как демо с ботом.
+const API=window.KLETKA_API||'https://icmottswwrsfniodyrpe.supabase.co/functions/v1/smart-function';
+const tg=window.Telegram&&Telegram.WebApp, ONLINE=!!(API&&tg&&tg.initData);
+let YOU=0, FOE=1, foeName='друг';
 const INK=['#1c3aa6','#c3202c'], PAPER='#f6f9fb', GRID='#c3d6e4', GRAPHITE='#3f4347';
 const NAMES=['Плато Пресса','Мыс Планки','Долина Присядь','Кряж Бицепса','Залив Подтягиваний','Бёрпи-Топь',
   'Отжим-Сити','Выпады','Трицепс-на-Дону','Поясничные Холмы','Широчайшая','Икроножье','Берег Дельт','Трапеция','Квадрицепс'];
@@ -169,7 +174,7 @@ function genMap(seed){
   const regions=ids.map((g,k)=>{const cells=[];region.forEach((v,i)=>{if(v===g)cells.push(i)});
     const cx=cells.reduce((s,i)=>s+i%COLS+.5,0)/cells.length, cy=cells.reduce((s,i)=>s+(i/COLS|0)+.5,0)/cells.length;
     return{name:NAMES[k%NAMES.length],cells,cx,cy,id:g}});
-  return{mask,region,regions,startYou,startFoe};
+  return{seed,mask,region,regions,startYou,startFoe};
 }
 
 /* ---------- Состояние ---------- */
@@ -179,13 +184,16 @@ function newGame(season=1){
   const cells={};
   const base=(start,o)=>{let f=[start],got=new Set();while(got.size<4&&f.length){const c=f.shift();if(got.has(c)||!m.mask[c])continue;got.add(c);f.push(...nbrs(c))}
     got.forEach(c=>cells[c]={o,d:0})};
-  base(m.startYou,YOU);base(m.startFoe,FOE);
+  base(m.startYou,0);base(m.startFoe,1);
   return{season,seed,start:Date.now(),simDays:0,lastDay:0,cells,players:[newPlayer(),newPlayer()],
     exercises:DEFAULT_EX.map(([name,w])=>({name,w})),over:false};
 }
-let G=load()||newGame(), MAP=genMap(G.seed);
+let G=(!ONLINE&&load())||newGame(), MAP=genMap(G.seed);
 function load(){try{return JSON.parse(localStorage.getItem(KEY))}catch{return null}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(G))}catch{}}
+function save(){
+  if(ONLINE){if(holding){clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,1500)}return}
+  try{localStorage.setItem(KEY,JSON.stringify(G))}catch{}
+}
 const today=()=>Math.floor((Date.now()-G.start)/DAY_MS)+G.simDays;
 const owned=o=>Object.values(G.cells).filter(c=>c.o===o).length;
 const heldRegions=o=>MAP.regions.filter(g=>g.cells.filter(i=>G.cells[i]&&G.cells[i].o===o).length*2>g.cells.length).length;
@@ -276,10 +284,10 @@ function botDay(){
 }
 function catchUp(){
   const t=Math.min(today(),SEASON_DAYS);let painted=0,captured=0;
-  while(G.lastDay<t){G.lastDay++;const r=botDay();if(r){painted+=r.painted;captured+=r.captured}}
+  if(!ONLINE)while(G.lastDay<t){G.lastDay++;const r=botDay();if(r){painted+=r.painted;captured+=r.captured}}
   if(painted)toast(`Друг закрасил ${painted}`+(captured?`, из них отбил у тебя ${captured}`:''));
-  if(today()>=SEASON_DAYS&&!G.over){G.over=true;openStats()}
-  save();
+  if(today()>=SEASON_DAYS){G.over=true;if(!overShown){overShown=true;openStats()}}
+  if(!ONLINE)save();
 }
 
 /* ---------- Отрисовка ---------- */
@@ -405,7 +413,8 @@ function tryPaint(i){
   if(dragKind&&dragKind!==kind)return false; // протяжка не захватывает чужое случайно
   const u=applyPaint(i,YOU);if(!u)return false;
   dragKind=kind;undoStack.push(u);session.painted++;if(u.prev)session.captured++;
-  startAnim(i);if(navigator.vibrate)navigator.vibrate(4);
+  startAnim(i);
+  if(ONLINE&&tg.HapticFeedback)tg.HapticFeedback.selectionChanged();else if(navigator.vibrate)navigator.vibrate(4);
   updateHud();dirty=true;save();return true;
 }
 cv.addEventListener('pointerdown',e=>{
@@ -442,15 +451,16 @@ cv.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,e.
 
 /* ---------- Интерфейс ---------- */
 function updateHud(){
-  $('sYou').textContent=owned(YOU);$('sFoe').textContent=owned(FOE);
-  $('day').textContent=G.over?'сезон окончен':`день ${Math.min(today(),SEASON_DAYS-1)+1} из ${SEASON_DAYS}`;
+  $('sYou').textContent=owned(YOU);$('sFoe').textContent=owned(FOE);$('lFoe').textContent=foeName;
+  $('day').textContent=(G.over?'сезон окончен':`день ${Math.min(today(),SEASON_DAYS-1)+1} из ${SEASON_DAYS}`)
+    +(holderName?`\n${holderName} рисует`:'');
   const bank=G.players[YOU].bank;
   $('bankYou').textContent=`запас ${bank}`;$('bankFoe').textContent=`запас ${G.players[FOE].bank}`;
   $('left').innerHTML=`${bank}<small>${plural(bank,'клетка','клетки','клеток')} в запасе</small>`;
   $('bUndo').disabled=!undoStack.length;
   $('bPen').hidden=!bank||pen;$('bPen').textContent=`Взять ручку: ${bank}`;
   $('viewBar').hidden=pen;$('penBar').hidden=!pen;
-  $('bLog').disabled=$('bPen').disabled=G.over;
+  $('bLog').disabled=$('bPen').disabled=G.over||!ready;
 }
 function plural(n,a,b,c){const m=n%100,d=n%10;if(m>10&&m<20)return c;if(d===1)return a;if(d>1&&d<5)return b;return c}
 let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),4500)}
@@ -486,21 +496,35 @@ $('bLog').onclick=()=>{draft={};renderRows();openSheet('sLog')};
 $('bLogClose').onclick=closeSheets;
 $('addForm').onsubmit=e=>{e.preventDefault();const n=$('addName').value.trim();
   if(n&&!G.exercises.some(x=>x.name===n)){G.exercises.push({name:n,w:1});save();renderRows()}$('addName').value=''};
-$('bLogGo').onclick=()=>{
+$('bLogGo').onclick=async()=>{
+  $('bLogGo').disabled=true;
+  const free=await takePen();
+  $('bLogGo').disabled=false;
+  if(!free){closeSheets();return}
   const reps={...draft},done=Object.values(reps).some(Boolean);
   session={reps:done?reps:{},painted:0,captured:0,cells:0};
   if(done)session.cells=addWorkout(YOU,reps);
   save();startPen();
 };
-$('bPen').onclick=()=>{session={reps:{},painted:0,captured:0,cells:0};startPen()};
+$('bPen').onclick=async()=>{
+  if(!await takePen())return;
+  session={reps:{},painted:0,captured:0,cells:0};startPen();
+};
 $('bUndo').onclick=()=>{const u=undoStack.pop();if(!u)return;undoPaint(u,YOU);session.painted--;if(u.prev)session.captured--;anims.delete(u.i);save();updateHud();dirty=true};
-$('bDone').onclick=()=>{pen=false;dirty=true;updateHud();save();
-  if(session&&(session.painted||Object.keys(session.reps).length)){$('report').textContent=reportText();openSheet('sReport')}};
+$('bDone').onclick=async()=>{
+  pen=false;dirty=true;
+  const changed=session&&(session.painted||Object.keys(session.reps).length);
+  const text=changed?reportText():'';
+  updateHud();
+  if(!ONLINE){save();if(changed){$('report').textContent=text;openSheet('sReport')}return}
+  const saved=await putPen();
+  if(changed&&saved)sendReport(text);
+};
 function reportText(){
   const lines=[`День ${Math.min(today(),SEASON_DAYS-1)+1} из ${SEASON_DAYS}`];
   for(const[n,v]of Object.entries(session.reps))if(v)lines.push(`${n}: ${v}`);
-  lines.push('',`Закрасил ${session.painted} ${plural(session.painted,'клетку','клетки','клеток')}`+(session.captured?`, из них отбил у друга ${session.captured}`:''));
-  lines.push(`На карте: я ${owned(YOU)}, друг ${owned(FOE)}`);
+  lines.push('',`Закрасил ${session.painted} ${plural(session.painted,'клетку','клетки','клеток')}`+(session.captured?`, из них отбил ${session.captured}`:''));
+  lines.push(`На карте: я ${owned(YOU)}, ${foeName} ${owned(FOE)}`);
   const b=G.players[YOU].bank;if(b)lines.push(`В запасе ${b}`);
   return lines.join('\n');
 }
@@ -515,9 +539,10 @@ $('bImg').onclick=()=>{view={...fitView};dirty=true;render();cv.toBlob(async b=>
 $('bRepClose').onclick=()=>{closeSheets();$('bCopy').textContent='Скопировать отчёт'};
 
 function openStats(){
-  const[a,b]=G.players,row=(l,x,y)=>`<tr><td>${l}</td><td class="b">${x}</td><td class="r">${y}</td></tr>`;
+  const a=G.players[YOU],b=G.players[FOE],row=(l,x,y)=>`<tr><td>${l}</td><td class="b">${x}</td><td class="r">${y}</td></tr>`;
   const names=[...new Set([...Object.keys(a.stats.reps),...Object.keys(b.stats.reps)])];
-  let h=`<table><tr><th></th><th class="b">ты</th><th class="r">друг</th></tr>`
+  const fn=foeName.replace(/</g,'&lt;');
+  let h=`<table><tr><th></th><th class="b">ты</th><th class="r">${fn}</th></tr>`
     +row('На карте сейчас',owned(YOU),owned(FOE))
     +row('Областей за собой',heldRegions(YOU),heldRegions(FOE))
     +row('Закрашено всего',a.stats.painted,b.stats.painted)
@@ -525,26 +550,131 @@ function openStats(){
     +row('Потеряно',a.stats.lost,b.stats.lost)
     +row('Тренировок',a.stats.workouts,b.stats.workouts)
     +`</table>`;
-  if(names.length){h+=`<table><tr><th>Сделано</th><th class="b">ты</th><th class="r">друг</th></tr>`
+  if(names.length){h+=`<table><tr><th>Сделано</th><th class="b">ты</th><th class="r">${fn}</th></tr>`
     +names.map(n=>row(n.replace(/</g,'&lt;'),a.stats.reps[n]||0,b.stats.reps[n]||0)).join('')+`</table>`}
   $('statsBody').innerHTML=h;
   const v=$('verdict');v.hidden=!G.over;
-  if(G.over){const x=owned(YOU),y=owned(FOE);v.textContent=x===y?'Ничья':x>y?`Карта твоя: ${x} против ${y}`:`Карта у друга: ${y} против ${x}`;v.className='verdict '+(x>y?'b':x<y?'r':'')}
+  if(G.over){const x=owned(YOU),y=owned(FOE);v.textContent=x===y?'Ничья':x>y?`Карта твоя: ${x} против ${y}`:`Карта у соперника (${foeName}): ${y} против ${x}`;v.className='verdict '+(x>y?'b':x<y?'r':'')}
   $('statsTitle').textContent=G.over?`Сезон ${G.season} окончен`:'Итоги';
-  $('bNextDay').hidden=G.over;
+  $('bNextDay').hidden=G.over||ONLINE;
   openSheet('sStats');
 }
 $('bStats').onclick=openStats;$('bStatsClose').onclick=closeSheets;
 $('bNextDay').onclick=()=>{G.simDays++;catchUp();updateHud();dirty=true;if(!G.over)openStats()};
-$('bNew').onclick=()=>{if(!G.over&&!confirm('Начать новый сезон? Текущая карта сотрётся.'))return;
-  const ex=G.exercises;G=newGame(G.season+1);G.exercises=ex;MAP=genMap(G.seed);resetMain();save();closeSheets();updateHud();dirty=true};
+const ask=m=>new Promise(res=>ONLINE&&tg.showConfirm?tg.showConfirm(m,res):res(confirm(m)));
+$('bNew').onclick=async()=>{
+  if(!G.over&&!await ask('Начать новый сезон? Текущая карта уйдёт в архив.'))return;
+  if(!await takePen())return;
+  const ex=G.exercises;G=newGame(G.season+1);G.exercises=ex;MAP=genMap(G.seed);resetMain();overShown=false;
+  closeSheets();updateHud();dirty=true;
+  if(ONLINE)await putPen(true);else save();
+};
+
+/* ---------- Сервер ---------- */
+let ready=!ONLINE,holding=false,version=0,saveTimer=null,saveChain=Promise.resolve(),holderName='',names=[],busy=false,pollN=0;
+var overShown=false;
+async function api(action,body={}){
+  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json','x-tg-init':tg.initData},body:JSON.stringify({action,...body})});
+  const j=await r.json().catch(()=>({error:'server'}));
+  if(!r.ok)throw Object.assign(new Error(j.error||r.status),{code:j.error});
+  return j;
+}
+function applyServer(s){
+  YOU=s.me;FOE=1-s.me;names=s.names;foeName=s.names[FOE]||'друг';
+  // Свои чернила всегда --blue в интерфейсе: у второго игрока кнопки красные
+  document.documentElement.style.setProperty('--blue',INK[YOU]);
+  document.documentElement.style.setProperty('--red',INK[FOE]);
+  holderName=s.holder!==null&&s.holder!==s.me?(s.names[s.holder]||'друг'):'';
+  if(s.doc&&s.version!==version){
+    if(s.doc.seed===G.seed)for(const k in s.doc.cells){const a=G.cells[k],b=s.doc.cells[k];if(!a||a.o!==b.o)startAnim(+k)}
+    G=s.doc;if(MAP.seed!==G.seed)MAP=genMap(G.seed);
+    resetMain();version=s.version;catchUp();
+  }
+  updateHud();dirty=true;
+}
+async function takePen(){
+  if(!ONLINE)return true;
+  clearTimeout(saveTimer);
+  const ex=G.exercises;
+  try{
+    const s=await api('lock');applyServer(s);
+    if(!s.locked){toast(`Сейчас рисует ${holderName||foeName}. Карта освободится, когда он положит ручку.`);return false}
+    G.exercises=ex;holding=true;return true;
+  }catch{toast('Нет связи с сервером, попробуй ещё раз');return false}
+}
+// Сохранения идут строго по очереди, иначе вторая запись придёт со старой версией
+function saveNow(archive=false){
+  clearTimeout(saveTimer);
+  return saveChain=saveChain.then(async()=>{
+    if(!holding)return;
+    try{version=(await api('save',{doc:G,version,archive})).version}
+    catch(e){
+      holding=false;pen=false;dirty=true;
+      toast(e.code==='conflict'?'Ручку забрали: долго не было действий. Показываю актуальную карту.':'Не удалось сохранить, проверь связь');
+      refresh();
+    }
+  });
+}
+async function putPen(archive=false){
+  await saveNow(archive);
+  if(!holding){updateHud();return false}
+  try{await api('release')}catch{}
+  holding=false;updateHud();return true;
+}
+async function refresh(){
+  if(busy)return;busy=true;
+  try{applyServer(await api('state'))}catch{}
+  busy=false;
+}
+function mapBlob(){
+  view={...fitView};dirty=true;render();
+  return new Promise(res=>cv.toBlob(res,'image/png'));
+}
+async function sendReport(text){
+  try{
+    const f=new FormData();f.set('action','report');f.set('text',text);f.set('photo',await mapBlob(),'map.png');
+    const r=await fetch(API,{method:'POST',headers:{'x-tg-init':tg.initData},body:f});
+    if(!r.ok)throw 0;
+    toast('Отчёт ушёл в канал');
+  }catch{
+    // Бот не достучался до канала: отчёт можно вставить руками
+    $('report').textContent=text;$('bImg').hidden=true;openSheet('sReport');
+    toast('Отчёт не отправился, скопируй его вручную');
+  }
+}
+async function boot(){
+  tg.ready();tg.expand();
+  if(tg.disableVerticalSwipes)tg.disableVerticalSwipes();
+  if(tg.setHeaderColor)tg.setHeaderColor(PAPER);
+  try{
+    const s=await api('state');applyServer(s);
+    if(!s.doc){ // Самый первый запуск: карту создаёт тот, кто открыл игру
+      const l=await api('lock');
+      if(l.doc){applyServer(l)}
+      else if(l.locked){holding=true;version=l.version;G=newGame();MAP=genMap(G.seed);resetMain();await putPen();await refresh()}
+    }
+    ready=true;updateHud();
+    setInterval(()=>{
+      pollN++;
+      // Пока соперник рисует, смотрим чаще, чтобы видеть захват вживую
+      if(document.hidden||pen||holding||document.querySelector('.sheet.open'))return;
+      if(holderName||pollN%4===0)refresh();
+    },2500);
+  }catch(e){
+    toast(e.code==='full'?'В этой игре уже двое игроков':'Нет связи с сервером. Закрой и открой игру.');
+  }
+}
 
 addEventListener('resize',resize);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>dirty=true);
-resize();catchUp();updateHud();
+resize();updateHud();
+if(ONLINE)boot();else catchUp();
+updateHud();
 (function loop(){render();requestAnimationFrame(loop)})();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){catchUp();updateHud();dirty=true}});
-window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,YOU,FOE};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;
+  if(ONLINE){if(ready&&!holding)refresh()}else catchUp();
+  updateHud();dirty=true});
+window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,YOU:()=>YOU};
 </script>
 </body>
 </html>
