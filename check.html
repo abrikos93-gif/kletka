@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Клетка: проверка</title>
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+<style>
+body{margin:0;padding:14px;font:18px/1.35 system-ui,sans-serif;background:#f6f9fb;color:#3f4347}
+h1{font-size:24px;font-weight:600;margin:0 0 10px}
+li{margin:5px 0;list-style:none}
+ul{padding:0;margin:0 0 14px}
+.ok{color:#14733a}.bad{color:#c3202c}.wait{color:#6d7479}
+#pad{width:100%;height:300px;display:block;touch-action:none;border:2px solid #3f4347;border-radius:6px;background:#fff}
+button{font:inherit;padding:10px 16px;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>Проверка связи</h1>
+<ul id="list"></ul>
+<p>Проведи пальцем по квадрату вверх и вниз, быстро и несколько раз. Если страница не закрывается и линия рисуется, всё хорошо.</p>
+<canvas id="pad"></canvas>
+<button id="copy">Скопировать результат</button>
+<script>
+const list=document.getElementById('list'),results={};
+function row(name){const li=document.createElement('li');li.className='wait';li.textContent=name+': проверяю…';list.append(li);
+  return(ok,msg)=>{li.className=ok?'ok':'bad';li.textContent=name+': '+msg;results[name]=msg}}
+async function ping(name,url){
+  const set=row(name),t=performance.now();
+  try{
+    await Promise.race([fetch(url,{mode:'no-cors',cache:'no-store'}),new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),10000))]);
+    set(true,`есть, ${Math.round(performance.now()-t)} мс`);
+  }catch(e){set(false,e.message==='timeout'?'нет ответа за 10 секунд':'не открывается')}
+}
+ping('GitHub Pages (сама игра)',location.origin+'/favicon.ico');
+ping('Supabase (база)','https://supabase.com/favicon.ico');
+ping('Telegram','https://telegram.org/js/telegram-web-app.js');
+ping('Шрифт Google','https://fonts.googleapis.com/css2?family=Neucha');
+
+const tg=row('Запуск в Telegram');
+let tries=0;
+(function waitTg(){
+  const app=window.Telegram&&Telegram.WebApp;
+  if(app&&app.initData){
+    app.ready();app.expand();
+    if(app.disableVerticalSwipes)app.disableVerticalSwipes();
+    const u=app.initDataUnsafe.user||{};
+    tg(true,`да, ${u.first_name||'имя не пришло'}, версия ${app.version}, ${app.platform}, свайп ${app.isVerticalSwipesEnabled===false?'отключён':'не отключён'}`);
+  }else if(++tries<30)setTimeout(waitTg,200);
+  else tg(true,'нет, открыто в обычном браузере');
+})();
+row('Экран')(true,`${innerWidth}×${innerHeight}, плотность ${devicePixelRatio}`);
+
+const pad=document.getElementById('pad'),ctx=pad.getContext('2d');
+const dpr=devicePixelRatio||1;pad.width=pad.clientWidth*dpr;pad.height=pad.clientHeight*dpr;ctx.scale(dpr,dpr);
+ctx.strokeStyle='#1c3aa6';ctx.lineWidth=3;ctx.lineCap='round';
+let last=null;
+pad.onpointerdown=e=>{pad.setPointerCapture(e.pointerId);last=[e.offsetX,e.offsetY]};
+pad.onpointermove=e=>{if(!last)return;ctx.beginPath();ctx.moveTo(...last);ctx.lineTo(e.offsetX,e.offsetY);ctx.stroke();last=[e.offsetX,e.offsetY]};
+pad.onpointerup=pad.onpointercancel=()=>last=null;
+document.getElementById('copy').onclick=async e=>{
+  const txt=Object.entries(results).map(([k,v])=>k+': '+v).join('\n');
+  try{await navigator.clipboard.writeText(txt);e.target.textContent='Скопировано'}catch{prompt('Скопируй:',txt)}
+};
+</script>
+</body>
+</html>

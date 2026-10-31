@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f6f9fb">
+<title>Клетка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Neucha&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f6f9fb; --grid:#c3d6e4; --graphite:#3f4347; --soft:#6d7479;
+  --blue:#1c3aa6; --red:#c3202c;
+  --sketch:255px 18px 225px 18px/18px 225px 18px 255px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--graphite);
+  font:20px/1.3 Neucha,"Segoe Print","Comic Sans MS",cursive;overscroll-behavior:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:var(--paper);border:2px solid var(--graphite);border-radius:var(--sketch);padding:9px 16px;min-height:46px}
+button:active{transform:translate(1px,1px)}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button:disabled{opacity:.4;cursor:default}
+:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+
+#top{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;
+  padding:calc(env(safe-area-inset-top) + 6px) 14px 0;pointer-events:none}
+.score{line-height:1}
+.score b{display:block;font-weight:400;font-size:44px}
+.score small{display:block;font-size:18px;margin-top:3px}
+.score.you{color:var(--blue)} .score.foe{color:var(--red);text-align:right}
+#day{text-align:center;padding-top:6px;color:var(--soft);font-size:18px;line-height:1.1}
+
+#bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;
+  padding:8px 12px calc(env(safe-area-inset-bottom) + 12px)}
+#left{font-size:30px;color:var(--blue);min-width:124px;line-height:1}
+#left small{display:block;font-size:16px;color:var(--soft)}
+
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;max-height:88%;overflow:auto;
+  background:var(--paper);border:2px solid var(--graphite);border-bottom:0;border-radius:14px 22px 0 0/20px 12px 0 0;
+  padding:16px 18px calc(env(safe-area-inset-bottom) + 16px);transform:translateY(105%);visibility:hidden;
+  transition:transform .22s ease-out,visibility .22s}
+.sheet.open{transform:none;visibility:visible}
+.sheet h2{font-weight:400;font-size:30px;margin:0 0 10px;line-height:1.1}
+.row{display:grid;grid-template-columns:1fr 92px 58px;gap:8px;align-items:center;padding:3px 0}
+.row input,.add input{width:100%;min-height:42px;padding:4px 6px;background:transparent;text-align:center;
+  border:0;border-bottom:2px solid var(--grid);border-radius:0;font-size:22px}
+.row input:focus,.add input:focus{outline:0;border-color:var(--blue)}
+.heads{color:var(--soft);font-size:16px;padding:0}
+.add{display:grid;grid-template-columns:1fr auto;gap:8px;margin:8px 0}
+.add input{text-align:left}
+.sum{margin:12px 0;font-size:22px;color:var(--blue)}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.acts button{flex:1 1 auto}
+table{width:100%;border-collapse:collapse;margin-bottom:14px}
+td,th{font-weight:400;padding:4px 0;text-align:right;border-bottom:1px solid var(--grid)}
+td:first-child,th:first-child{text-align:left}
+.b{color:var(--blue)} .r{color:var(--red)}
+.verdict{font-size:26px;margin:0 0 12px}
+pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
+.rules{color:var(--soft);font-size:18px;margin:0 0 14px}
+#toast{position:fixed;left:50%;top:106px;transform:translateX(-50%);width:max-content;max-width:88%;
+  background:var(--paper);border:2px solid var(--red);border-radius:var(--sketch);color:var(--red);
+  padding:8px 14px;opacity:0;pointer-events:none;transition:opacity .25s;text-align:center}
+#toast.show{opacity:1}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.sheet,#toast{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Карта территории"></canvas>
+
+<div id="top">
+  <div class="score you"><b id="sYou">0</b>ты<small id="bankYou"></small></div>
+  <div id="day"></div>
+  <div class="score foe"><b id="sFoe">0</b>друг<small id="bankFoe"></small></div>
+</div>
+
+<div id="bar">
+  <div id="viewBar" class="acts">
+    <button id="bLog" class="primary">Записать тренировку</button>
+    <button id="bPen" hidden></button>
+    <button id="bStats">Итоги</button>
+  </div>
+  <div id="penBar" class="acts" style="align-items:center" hidden>
+    <div id="left"></div>
+    <button id="bUndo">Отменить</button>
+    <button id="bDone" class="primary">Положить ручку</button>
+  </div>
+</div>
+
+<section id="sLog" class="sheet" aria-label="Запись тренировки">
+  <h2>Что сделал</h2>
+  <div class="row heads"><span>упражнение</span><span style="text-align:center">повторы</span><span style="text-align:center">очки</span></div>
+  <div id="rows"></div>
+  <form class="add" id="addForm"><input id="addName" placeholder="Другое упражнение" aria-label="Название упражнения"><button>Добавить</button></form>
+  <div class="sum" id="sum"></div>
+  <div class="acts"><button id="bLogClose">Закрыть</button><button id="bLogGo" class="primary">Взять ручку</button></div>
+</section>
+
+<section id="sReport" class="sheet" aria-label="Отчёт для канала">
+  <h2>Отчёт для канала</h2>
+  <pre id="report"></pre>
+  <div class="acts"><button id="bCopy" class="primary">Скопировать отчёт</button><button id="bImg">Сохранить карту</button><button id="bRepClose">Закрыть</button></div>
+</section>
+
+<section id="sStats" class="sheet" aria-label="Итоги">
+  <h2 id="statsTitle">Итоги</h2>
+  <p class="verdict" id="verdict" hidden></p>
+  <div id="statsBody"></div>
+  <p class="rules">Пустая клетка рядом со своей стоит 1. Чужая рядом со своей стоит 2, а если ей неделя и больше, то 3. Тонкая линия, где у клетки не больше двух своих соседей, на 1 дешевле. Отрезанный кусок выцветает: от него нельзя расти, и он стоит 1, пока не соединишь его с главной территорией. Одна клетка за 10 очков.</p>
+  <div class="acts">
+    <button id="bStatsClose">Закрыть</button>
+    <button id="bNextDay">Прожить день (тест)</button>
+    <button id="bNew">Новый сезон</button>
+  </div>
+</section>
+
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+const COLS=26, ROWS=38, SEASON_DAYS=28, REPS_PER_CELL=10, FORTIFY_AGE=7, KEY='kletka.v1';
+const YOU=0, FOE=1, DAY_MS=864e5;
+const INK=['#1c3aa6','#c3202c'], PAPER='#f6f9fb', GRID='#c3d6e4', GRAPHITE='#3f4347';
+const NAMES=['Плато Пресса','Мыс Планки','Долина Присядь','Кряж Бицепса','Залив Подтягиваний','Бёрпи-Топь',
+  'Отжим-Сити','Выпады','Трицепс-на-Дону','Поясничные Холмы','Широчайшая','Икроножье','Берег Дельт','Трапеция','Квадрицепс'];
+const DEFAULT_EX=[['Подтягивания',3],['Отжимания',1],['Приседания',.5],['Выпады',.5],['Бёрпи',2],['Скручивания',.5],['Планка, сек',.2]];
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=id=>document.getElementById(id);
+
+/* ---------- Карта ---------- */
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const idx=(x,y)=>y*COLS+x;
+const nbrs=i=>{const x=i%COLS,y=(i/COLS)|0,o=[];if(x>0)o.push(i-1);if(x<COLS-1)o.push(i+1);if(y>0)o.push(i-COLS);if(y<ROWS-1)o.push(i+COLS);return o};
+
+function genMap(seed){
+  const r=mulberry(seed), mask=new Array(COLS*ROWS).fill(false);
+  // Контур: края эллипса рваные, как обведённые от руки
+  const bumps=Array.from({length:9},()=>[r()*6.28,r()*.12,2+((r()*5)|0)]);
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+    const dx=(x+.5-COLS/2)/(COLS/2), dy=(y+.5-ROWS/2)/(ROWS/2), a=Math.atan2(dy,dx);
+    let lim=1.14; for(const[p,h,f]of bumps)lim+=Math.sin(a*f+p)*h;
+    mask[idx(x,y)]=Math.pow(Math.abs(dx),3)+Math.pow(Math.abs(dy),3)<lim*.92;
+  }
+  // Озёра
+  for(let k=0;k<4;k++){const cx=4+r()*(COLS-8)|0,cy=6+r()*(ROWS-12)|0,w=1+r()*2|0,h=1+r()*2|0;
+    for(let y=cy;y<cy+h;y++)for(let x=cx;x<cx+w;x++)mask[idx(x,y)]=false}
+  const valid=[];mask.forEach((m,i)=>m&&valid.push(i));
+  const byDist=(tx,ty)=>valid.slice().sort((a,b)=>{
+    const d=i=>(i%COLS-tx)**2+((i/COLS|0)-ty)**2;return d(a)-d(b)});
+  const startYou=byDist(2,ROWS-3)[0], startFoe=byDist(COLS-3,2)[0];
+  // Оставляем только то, что связано с базой
+  const seen=new Set([startYou]),q=[startYou];
+  while(q.length){for(const n of nbrs(q.pop()))if(mask[n]&&!seen.has(n)){seen.add(n);q.push(n)}}
+  mask.forEach((m,i)=>{if(m&&!seen.has(i))mask[i]=false});
+  // Области: Вороной по шахматке с дрожанием
+  const seeds=[];for(let gy=0;gy<5;gy++)for(let gx=0;gx<3;gx++)
+    seeds.push([(gx+.2+r()*.6)*COLS/3,(gy+.2+r()*.6)*ROWS/5]);
+  const region=new Array(COLS*ROWS).fill(-1);
+  mask.forEach((m,i)=>{if(!m)return;const x=i%COLS+.5,y=(i/COLS|0)+.5;let best=0,bd=1e9;
+    seeds.forEach((s,k)=>{const d=(s[0]-x)**2+(s[1]-y)**2;if(d<bd){bd=d;best=k}});region[i]=best});
+  // Совсем мелкие области вливаем в соседей
+  const count={};region.forEach(g=>{if(g>=0)count[g]=(count[g]||0)+1});
+  region.forEach((g,i)=>{if(g>=0&&count[g]<20){const n=nbrs(i).map(k=>region[k]).find(k=>k>=0&&k!==g&&count[k]>=20);if(n!==undefined)region[i]=n}});
+  const ids=[...new Set(region.filter(g=>g>=0))];
+  const regions=ids.map((g,k)=>{const cells=[];region.forEach((v,i)=>{if(v===g)cells.push(i)});
+    const cx=cells.reduce((s,i)=>s+i%COLS+.5,0)/cells.length, cy=cells.reduce((s,i)=>s+(i/COLS|0)+.5,0)/cells.length;
+    return{name:NAMES[k%NAMES.length],cells,cx,cy,id:g}});
+  return{mask,region,regions,startYou,startFoe};
+}
+
+/* ---------- Состояние ---------- */
+const newPlayer=()=>({bank:0,carry:0,stats:{painted:0,captured:0,lost:0,workouts:0,reps:{}}});
+function newGame(season=1){
+  const seed=(Date.now()&0xffffff)+season, m=genMap(seed);
+  const cells={};
+  const base=(start,o)=>{let f=[start],got=new Set();while(got.size<4&&f.length){const c=f.shift();if(got.has(c)||!m.mask[c])continue;got.add(c);f.push(...nbrs(c))}
+    got.forEach(c=>cells[c]={o,d:0})};
+  base(m.startYou,YOU);base(m.startFoe,FOE);
+  return{season,seed,start:Date.now(),simDays:0,lastDay:0,cells,players:[newPlayer(),newPlayer()],
+    exercises:DEFAULT_EX.map(([name,w])=>({name,w})),over:false};
+}
+let G=load()||newGame(), MAP=genMap(G.seed);
+function load(){try{return JSON.parse(localStorage.getItem(KEY))}catch{return null}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(G))}catch{}}
+const today=()=>Math.floor((Date.now()-G.start)/DAY_MS)+G.simDays;
+const owned=o=>Object.values(G.cells).filter(c=>c.o===o).length;
+const heldRegions=o=>MAP.regions.filter(g=>g.cells.filter(i=>G.cells[i]&&G.cells[i].o===o).length*2>g.cells.length).length;
+
+/* ---------- Правила ---------- */
+// Главная территория: самый большой связный кусок. Остальное считается отрезанным.
+let mainCache=[null,null];
+const resetMain=()=>{mainCache=[null,null]};
+function mainOf(o){
+  if(mainCache[o])return mainCache[o];
+  const seen=new Set();let best=new Set();
+  for(const key in G.cells){
+    const start=+key;
+    if(G.cells[start].o!==o||seen.has(start))continue;
+    const part=new Set([start]),q=[start];seen.add(start);
+    while(q.length)for(const n of nbrs(q.pop()))
+      if(G.cells[n]&&G.cells[n].o===o&&!seen.has(n)){seen.add(n);part.add(n);q.push(n)}
+    if(part.size>best.size)best=part;
+  }
+  return mainCache[o]=best;
+}
+function costFor(i,o){
+  if(!MAP.mask[i])return null;
+  const c=G.cells[i];
+  if(c&&c.o===o)return null;
+  const main=mainOf(o);
+  if(!nbrs(i).some(n=>main.has(n)))return null; // от отрезанных кусков расти нельзя
+  if(!c)return 1;
+  if(!mainOf(c.o).has(i))return 1; // отрезанное берётся как пустое
+  const cost=today()-c.d>=FORTIFY_AGE?3:2;
+  const support=nbrs(i).filter(n=>G.cells[n]&&G.cells[n].o===c.o).length;
+  return support<=2?cost-1:cost; // одинарная линия слабее сплошного фронта
+}
+function applyPaint(i,o){
+  const c=G.cells[i], cost=costFor(i,o), P=G.players[o];
+  if(cost===null||P.bank<cost)return null;
+  const undo={i,prev:c?{...c}:null,cost};
+  G.cells[i]={o,d:today(),prev:c?c.o:(undefined)};
+  resetMain();
+  P.bank-=cost; P.stats.painted++;
+  if(c){P.stats.captured++;G.players[c.o].stats.lost++}
+  return undo;
+}
+function undoPaint(u,o){
+  const P=G.players[o];
+  if(u.prev)G.cells[u.i]=u.prev;else delete G.cells[u.i];
+  resetMain();
+  P.bank+=u.cost;P.stats.painted--;
+  if(u.prev){P.stats.captured--;G.players[u.prev.o].stats.lost--}
+}
+function addWorkout(o,reps){
+  const P=G.players[o];let pts=0;
+  for(const[name,n]of Object.entries(reps)){
+    if(!n)continue;
+    const ex=G.exercises.find(e=>e.name===name), w=ex?ex.w:1;
+    pts+=n*w; P.stats.reps[name]=(P.stats.reps[name]||0)+n;
+  }
+  const total=P.carry+pts, cells=Math.floor(total/REPS_PER_CELL);
+  P.carry=+(total-cells*REPS_PER_CELL).toFixed(2);
+  P.bank+=cells; P.stats.workouts++;
+  return cells;
+}
+
+/* ---------- Бот вместо друга ---------- */
+function botDay(){
+  if(Math.random()>4/7)return null;
+  const ex=G.exercises, reps={};
+  for(let k=0;k<3;k++){const e=ex[Math.random()*ex.length|0];
+    reps[e.name]=(reps[e.name]||0)+Math.round((15+Math.random()*25)*Math.min(3,1/e.w)*3)}
+  addWorkout(FOE,reps);
+  let painted=0,captured=0;
+  if(Math.random()<.3)return{painted,captured}; // иногда копит на рывок
+  const before=G.players[FOE].bank;
+  for(let guard=0;guard<before+5;guard++){
+    const P=G.players[FOE];if(P.bank<1)break;
+    const opts=[];
+    for(let i=0;i<COLS*ROWS;i++){const c=costFor(i,FOE);if(c!==null&&c<=P.bank)opts.push([i,c])}
+    if(!opts.length)break;
+    const wantWar=Math.random()<.22, pool=opts.filter(([i])=>wantWar===!!G.cells[i]);
+    const use=pool.length?pool:opts;
+    // Предпочитает клетки с большим числом своих соседей, чтобы фронт был сплошным
+    let best=use[0],bs=-1;
+    for(const o of use){const s=nbrs(o[0]).filter(n=>G.cells[n]&&G.cells[n].o===FOE).length+Math.random()*1.5;if(s>bs){bs=s;best=o}}
+    const u=applyPaint(best[0],FOE);
+    if(u){painted++;if(u.prev)captured++;startAnim(best[0])}
+  }
+  return{painted,captured};
+}
+function catchUp(){
+  const t=Math.min(today(),SEASON_DAYS);let painted=0,captured=0;
+  while(G.lastDay<t){G.lastDay++;const r=botDay();if(r){painted+=r.painted;captured+=r.captured}}
+  if(painted)toast(`Друг закрасил ${painted}`+(captured?`, из них отбил у тебя ${captured}`:''));
+  if(today()>=SEASON_DAYS&&!G.over){G.over=true;openStats()}
+  save();
+}
+
+/* ---------- Отрисовка ---------- */
+const cv=$('c'),ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1,view={s:14,x:0,y:0},fitView={s:14,x:0,y:0};
+let dirty=true;const anims=new Map();
+const ANIM_MS=reduced?0:170;
+function startAnim(i){if(ANIM_MS)anims.set(i,performance.now())}
+const noise=(a,b=0)=>{const v=Math.sin(a*12.9898+b*78.233)*43758.5453;return v-Math.floor(v)};
+
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2.5);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;
+  const top=104,bot=W<480?132:78; // на телефоне кнопки встают в два ряда
+  const s=Math.min((W-12)/COLS,(H-top-bot)/ROWS);
+  fitView={s,x:(W-s*COLS)/2,y:top+(H-top-bot-s*ROWS)/2};
+  view={...fitView};dirty=true;
+}
+function hatch(px,py,s,seed,ink,flip,alpha,p=1,n=6){
+  ctx.strokeStyle=ink;ctx.globalAlpha=alpha;ctx.lineWidth=Math.max(1,s*.085);ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.beginPath();
+  const pts=[];
+  for(let k=0;k<n;k++){
+    const u=(k+.5)/n*2;let a,b;
+    if(u<1){a=[0,u];b=[u,0]}else{a=[u-1,1];b=[1,u-1]}
+    pts.push(k%2?b:a,k%2?a:b);
+  }
+  const lim=Math.max(2,Math.ceil(pts.length*p));
+  for(let k=0;k<lim;k++){
+    let[x,y]=pts[k];if(flip)x=1-x;
+    const jx=(noise(seed,k)-.5)*.13,jy=(noise(seed,k+31)-.5)*.13;
+    const X=px+(x+jx)*s,Y=py+(y+jy)*s;
+    k?ctx.lineTo(X,Y):ctx.moveTo(X,Y);
+  }
+  ctx.stroke();ctx.globalAlpha=1;
+}
+function vertex(vx,vy){return[vx+(noise(vx,vy)-.5)*.1,vy+(noise(vy+99,vx)-.5)*.1]}
+function strokeEdges(test,width){
+  const s=view.s;ctx.beginPath();
+  const seg=(x1,y1,x2,y2)=>{const a=vertex(x1,y1),b=vertex(x2,y2);
+    ctx.moveTo(view.x+a[0]*s,view.y+a[1]*s);ctx.lineTo(view.x+b[0]*s,view.y+b[1]*s)};
+  for(let y=0;y<=ROWS;y++)for(let x=0;x<=COLS;x++){
+    const here=x<COLS&&y<ROWS?idx(x,y):-1;
+    const left=x>0&&y<ROWS?idx(x-1,y):-1, up=y>0&&x<COLS?idx(x,y-1):-1;
+    if(y<ROWS&&test(here,left))seg(x,y,x,y+1);
+    if(x<COLS&&test(here,up))seg(x,y,x+1,y);
+  }
+  ctx.lineWidth=width;ctx.strokeStyle=GRAPHITE;ctx.lineCap='round';ctx.stroke();
+}
+function render(){
+  if(!dirty&&!anims.size)return;dirty=false;
+  const now=performance.now();
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle=PAPER;ctx.fillRect(0,0,W,H);
+  const s=view.s;
+  // Лист в клетку уходит за края карты
+  ctx.strokeStyle=GRID;ctx.lineWidth=1;ctx.beginPath();
+  for(let x=((view.x%s)+s)%s;x<W;x+=s){ctx.moveTo(x,0);ctx.lineTo(x,H)}
+  for(let y=((view.y%s)+s)%s;y<H;y+=s){ctx.moveTo(0,y);ctx.lineTo(W,y)}
+  ctx.stroke();
+  // Штриховка
+  const t=today();
+  for(const key in G.cells){
+    const i=+key,c=G.cells[i],px=view.x+(i%COLS)*s,py=view.y+((i/COLS)|0)*s;
+    if(px<-s||py<-s||px>W||py>H)continue;
+    if(c.prev!==undefined&&c.prev!==null)hatch(px,py,s,i+7,INK[c.prev],true,.42);
+    let p=1;
+    if(anims.has(i)){p=(now-anims.get(i))/ANIM_MS;if(p>=1){anims.delete(i);p=1}}
+    const cut=!mainOf(c.o).has(i); // отрезанные клетки выцветают
+    const old=!cut&&t-c.d>=FORTIFY_AGE; // укреплённые заштрихованы вдвое гуще и крест-накрест
+    hatch(px,py,s,i,INK[c.o],false,cut?.38:.9,p,old?11:6);
+    if(old&&p===1)hatch(px,py,s,i+3,INK[c.o],true,.9,1,11);
+  }
+  // Границы областей и контур
+  strokeEdges((a,b)=>{const ra=a>=0?MAP.region[a]:-1,rb=b>=0?MAP.region[b]:-1;return ra>=0&&rb>=0&&ra!==rb},Math.max(1,s*.1));
+  strokeEdges((a,b)=>(a>=0&&MAP.mask[a])!==(b>=0&&MAP.mask[b]),Math.max(1.6,s*.17));
+  // Подсказки в режиме ручки
+  if(pen){
+    const P=G.players[YOU];
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${s*.72}px Neucha,cursive`;
+    for(let i=0;i<COLS*ROWS;i++){
+      const c=costFor(i,YOU);if(c===null||c>P.bank)continue;
+      const px=view.x+(i%COLS)*s,py=view.y+((i/COLS)|0)*s;
+      if(!G.cells[i]){ctx.fillStyle=INK[YOU];ctx.globalAlpha=.16;ctx.fillRect(px+1,py+1,s-2,s-2);ctx.globalAlpha=1}
+      else{ctx.fillStyle=PAPER;ctx.fillRect(px+s*.16,py+s*.16,s*.68,s*.68);ctx.fillStyle=INK[YOU];ctx.fillText(c,px+s/2,py+s/2+1)}
+    }
+  }else{
+    // Подписи областей: чернилами того, кто держит большинство
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    const fs=Math.max(11,s*.86);ctx.font=`${fs}px Neucha,cursive`;
+    for(const g of MAP.regions){
+      const yours=g.cells.filter(i=>G.cells[i]&&G.cells[i].o===YOU).length,foes=g.cells.filter(i=>G.cells[i]&&G.cells[i].o===FOE).length;
+      const col=yours*2>g.cells.length?INK[YOU]:foes*2>g.cells.length?INK[FOE]:'#6d7479';
+      const X=view.x+g.cx*s,Y=view.y+g.cy*s,lines=g.name.split(' ');
+      lines.forEach((ln,k)=>{const y=Y+(k-(lines.length-1)/2)*fs;
+        ctx.lineWidth=4;ctx.strokeStyle=PAPER;ctx.lineJoin='round';ctx.strokeText(ln,X,y);ctx.fillStyle=col;ctx.fillText(ln,X,y)});
+    }
+  }
+}
+
+/* ---------- Ввод на карте ---------- */
+let pen=false,undoStack=[],session=null,dragKind=null,lastPt=null;
+const ptrs=new Map();let pinch=null,panned=false;
+const cellAt=(x,y)=>{const cx=Math.floor((x-view.x)/view.s),cy=Math.floor((y-view.y)/view.s);
+  return cx<0||cy<0||cx>=COLS||cy>=ROWS?-1:idx(cx,cy)};
+function nearestPaintable(x,y){
+  let best=-1,bd=(view.s*.95)**2;
+  const c0=Math.floor((x-view.x)/view.s),r0=Math.floor((y-view.y)/view.s);
+  for(let ry=r0-1;ry<=r0+1;ry++)for(let rx=c0-1;rx<=c0+1;rx++){
+    if(rx<0||ry<0||rx>=COLS||ry>=ROWS)continue;
+    const i=idx(rx,ry),c=costFor(i,YOU);
+    if(c===null||c>G.players[YOU].bank)continue;
+    const d=(view.x+(rx+.5)*view.s-x)**2+(view.y+(ry+.5)*view.s-y)**2;
+    if(d<bd){bd=d;best=i}
+  }
+  return best;
+}
+function tryPaint(i){
+  if(i<0)return false;
+  const c=costFor(i,YOU);
+  if(c===null)return false;
+  const kind=G.cells[i]?'foe':'empty';
+  if(dragKind&&dragKind!==kind)return false; // протяжка не захватывает чужое случайно
+  const u=applyPaint(i,YOU);if(!u)return false;
+  dragKind=kind;undoStack.push(u);session.painted++;if(u.prev)session.captured++;
+  startAnim(i);if(navigator.vibrate)navigator.vibrate(4);
+  updateHud();dirty=true;save();return true;
+}
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};lastPt=null;return}
+  panned=false;lastPt={x:e.clientX,y:e.clientY};
+  if(pen&&ptrs.size===1){dragKind=null;const i=cellAt(e.clientX,e.clientY);
+    if(!tryPaint(i))tryPaint(nearestPaintable(e.clientX,e.clientY))}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size>=2&&pinch){
+    const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y),cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    zoomAt(pinch.cx,pinch.cy,d/pinch.d);view.x+=cx-pinch.cx;view.y+=cy-pinch.cy;
+    pinch={d,cx,cy};dirty=true;return;
+  }
+  if(!lastPt)return;
+  if(pen){
+    // Шагаем вдоль движения, чтобы быстрая протяжка не перепрыгивала клетки
+    const dx=e.clientX-lastPt.x,dy=e.clientY-lastPt.y,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(view.s/3)));
+    for(let k=1;k<=n;k++)tryPaint(cellAt(lastPt.x+dx*k/n,lastPt.y+dy*k/n));
+  }else if(view.s>fitView.s+.01){view.x+=e.clientX-lastPt.x;view.y+=e.clientY-lastPt.y;dirty=true}
+  lastPt={x:e.clientX,y:e.clientY};
+});
+const up=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;if(!ptrs.size){lastPt=null;dragKind=null}};
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+function zoomAt(x,y,f){
+  const s=Math.min(fitView.s*5,Math.max(fitView.s,view.s*f));
+  view.x=x-(x-view.x)*s/view.s;view.y=y-(y-view.y)*s/view.s;view.s=s;
+  if(s===fitView.s)view={...fitView};
+}
+cv.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,e.deltaY<0?1.15:.87);dirty=true},{passive:false});
+
+/* ---------- Интерфейс ---------- */
+function updateHud(){
+  $('sYou').textContent=owned(YOU);$('sFoe').textContent=owned(FOE);
+  $('day').textContent=G.over?'сезон окончен':`день ${Math.min(today(),SEASON_DAYS-1)+1} из ${SEASON_DAYS}`;
+  const bank=G.players[YOU].bank;
+  $('bankYou').textContent=`запас ${bank}`;$('bankFoe').textContent=`запас ${G.players[FOE].bank}`;
+  $('left').innerHTML=`${bank}<small>${plural(bank,'клетка','клетки','клеток')} в запасе</small>`;
+  $('bUndo').disabled=!undoStack.length;
+  $('bPen').hidden=!bank||pen;$('bPen').textContent=`Взять ручку: ${bank}`;
+  $('viewBar').hidden=pen;$('penBar').hidden=!pen;
+  $('bLog').disabled=$('bPen').disabled=G.over;
+}
+function plural(n,a,b,c){const m=n%100,d=n%10;if(m>10&&m<20)return c;if(d===1)return a;if(d>1&&d<5)return b;return c}
+let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),4500)}
+const closeSheets=()=>document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+const openSheet=id=>{closeSheets();$('toast').classList.remove('show');$(id).classList.add('open')};
+
+let draft={};
+function renderRows(){
+  $('rows').innerHTML='';
+  G.exercises.forEach(ex=>{
+    const row=document.createElement('div');row.className='row';
+    const name=document.createElement('span');name.textContent=ex.name;
+    const rep=document.createElement('input');rep.inputMode='numeric';rep.placeholder='0';rep.setAttribute('aria-label',ex.name+', повторы');
+    rep.value=draft[ex.name]||'';
+    rep.oninput=()=>{draft[ex.name]=Math.max(0,parseInt(rep.value)||0);updateSum()};
+    const w=document.createElement('input');w.inputMode='decimal';w.value=ex.w;w.setAttribute('aria-label',ex.name+', очков за повтор');
+    w.oninput=()=>{const v=parseFloat(w.value.replace(',','.'));if(v>0){ex.w=v;save();updateSum()}};
+    row.append(name,rep,w);$('rows').append(row);
+  });
+  updateSum();
+}
+function draftPoints(){return Object.entries(draft).reduce((s,[n,v])=>{const e=G.exercises.find(x=>x.name===n);return s+v*(e?e.w:1)},0)}
+function updateSum(){
+  const P=G.players[YOU],pts=draftPoints(),total=P.carry+pts,cells=Math.floor(total/REPS_PER_CELL);
+  const rest=+(total-cells*REPS_PER_CELL).toFixed(1);
+  $('sum').textContent=pts||P.carry
+    ?`${cells} ${plural(cells,'клетка','клетки','клеток')}, ещё ${rest} очков из ${REPS_PER_CELL} перейдёт на следующий раз`
+    :'Введи повторы, и здесь появятся клетки';
+  $('bLogGo').disabled=!pts&&!P.bank;
+}
+function startPen(){closeSheets();pen=true;undoStack=[];view={...fitView};dirty=true;updateHud()}
+$('bLog').onclick=()=>{draft={};renderRows();openSheet('sLog')};
+$('bLogClose').onclick=closeSheets;
+$('addForm').onsubmit=e=>{e.preventDefault();const n=$('addName').value.trim();
+  if(n&&!G.exercises.some(x=>x.name===n)){G.exercises.push({name:n,w:1});save();renderRows()}$('addName').value=''};
+$('bLogGo').onclick=()=>{
+  const reps={...draft},done=Object.values(reps).some(Boolean);
+  session={reps:done?reps:{},painted:0,captured:0,cells:0};
+  if(done)session.cells=addWorkout(YOU,reps);
+  save();startPen();
+};
+$('bPen').onclick=()=>{session={reps:{},painted:0,captured:0,cells:0};startPen()};
+$('bUndo').onclick=()=>{const u=undoStack.pop();if(!u)return;undoPaint(u,YOU);session.painted--;if(u.prev)session.captured--;anims.delete(u.i);save();updateHud();dirty=true};
+$('bDone').onclick=()=>{pen=false;dirty=true;updateHud();save();
+  if(session&&(session.painted||Object.keys(session.reps).length)){$('report').textContent=reportText();openSheet('sReport')}};
+function reportText(){
+  const lines=[`День ${Math.min(today(),SEASON_DAYS-1)+1} из ${SEASON_DAYS}`];
+  for(const[n,v]of Object.entries(session.reps))if(v)lines.push(`${n}: ${v}`);
+  lines.push('',`Закрасил ${session.painted} ${plural(session.painted,'клетку','клетки','клеток')}`+(session.captured?`, из них отбил у друга ${session.captured}`:''));
+  lines.push(`На карте: я ${owned(YOU)}, друг ${owned(FOE)}`);
+  const b=G.players[YOU].bank;if(b)lines.push(`В запасе ${b}`);
+  return lines.join('\n');
+}
+$('bCopy').onclick=async()=>{const txt=$('report').textContent;
+  try{await navigator.clipboard.writeText(txt)}catch{
+    const a=document.createElement('textarea');a.value=txt;document.body.append(a);a.select();document.execCommand('copy');a.remove()}
+  $('bCopy').textContent='Скопировано'};
+$('bImg').onclick=()=>{view={...fitView};dirty=true;render();cv.toBlob(async b=>{
+  const f=new File([b],`kletka-den-${today()+1}.png`,{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]})}catch{}return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click();URL.revokeObjectURL(a.href)})};
+$('bRepClose').onclick=()=>{closeSheets();$('bCopy').textContent='Скопировать отчёт'};
+
+function openStats(){
+  const[a,b]=G.players,row=(l,x,y)=>`<tr><td>${l}</td><td class="b">${x}</td><td class="r">${y}</td></tr>`;
+  const names=[...new Set([...Object.keys(a.stats.reps),...Object.keys(b.stats.reps)])];
+  let h=`<table><tr><th></th><th class="b">ты</th><th class="r">друг</th></tr>`
+    +row('На карте сейчас',owned(YOU),owned(FOE))
+    +row('Областей за собой',heldRegions(YOU),heldRegions(FOE))
+    +row('Закрашено всего',a.stats.painted,b.stats.painted)
+    +row('Отбито у соперника',a.stats.captured,b.stats.captured)
+    +row('Потеряно',a.stats.lost,b.stats.lost)
+    +row('Тренировок',a.stats.workouts,b.stats.workouts)
+    +`</table>`;
+  if(names.length){h+=`<table><tr><th>Сделано</th><th class="b">ты</th><th class="r">друг</th></tr>`
+    +names.map(n=>row(n.replace(/</g,'&lt;'),a.stats.reps[n]||0,b.stats.reps[n]||0)).join('')+`</table>`}
+  $('statsBody').innerHTML=h;
+  const v=$('verdict');v.hidden=!G.over;
+  if(G.over){const x=owned(YOU),y=owned(FOE);v.textContent=x===y?'Ничья':x>y?`Карта твоя: ${x} против ${y}`:`Карта у друга: ${y} против ${x}`;v.className='verdict '+(x>y?'b':x<y?'r':'')}
+  $('statsTitle').textContent=G.over?`Сезон ${G.season} окончен`:'Итоги';
+  $('bNextDay').hidden=G.over;
+  openSheet('sStats');
+}
+$('bStats').onclick=openStats;$('bStatsClose').onclick=closeSheets;
+$('bNextDay').onclick=()=>{G.simDays++;catchUp();updateHud();dirty=true;if(!G.over)openStats()};
+$('bNew').onclick=()=>{if(!G.over&&!confirm('Начать новый сезон? Текущая карта сотрётся.'))return;
+  const ex=G.exercises;G=newGame(G.season+1);G.exercises=ex;MAP=genMap(G.seed);resetMain();save();closeSheets();updateHud();dirty=true};
+
+addEventListener('resize',resize);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>dirty=true);
+resize();catchUp();updateHud();
+(function loop(){render();requestAnimationFrame(loop)})();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){catchUp();updateHud();dirty=true}});
+window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,YOU,FOE};
+</script>
+</body>
+</html>
