@@ -124,7 +124,7 @@ pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
 <script>
 'use strict';
 const COLS=26, ROWS=38, SEASON_DAYS=28, REPS_PER_CELL=10, FORTIFY_AGE=7, KEY='kletka.v1';
-const DAY_MS=864e5;
+const DAY_MS=864e5, STATE_NAME='Пампингстан', NAME_H=34;
 // Адрес серверной функции. Вне Telegram страница работает как демо с ботом.
 const API=window.KLETKA_API||'https://icmottswwrsfniodyrpe.supabase.co/functions/v1/smart-function';
 const tg=window.Telegram&&Telegram.WebApp, ONLINE=!!(API&&tg&&tg.initData);
@@ -182,9 +182,7 @@ const newPlayer=()=>({bank:0,carry:0,stats:{painted:0,captured:0,lost:0,workouts
 function newGame(season=1){
   const seed=(Date.now()&0xffffff)+season, m=genMap(seed);
   const cells={};
-  const base=(start,o)=>{let f=[start],got=new Set();while(got.size<4&&f.length){const c=f.shift();if(got.has(c)||!m.mask[c])continue;got.add(c);f.push(...nbrs(c))}
-    got.forEach(c=>cells[c]={o,d:0})};
-  base(m.startYou,0);base(m.startFoe,1);
+  cells[m.startYou]={o:0,d:0};cells[m.startFoe]={o:1,d:0};
   return{season,seed,start:Date.now(),simDays:0,lastDay:0,cells,players:[newPlayer(),newPlayer()],
     exercises:DEFAULT_EX.map(([name,w])=>({name,w})),over:false};
 }
@@ -220,6 +218,7 @@ function costFor(i,o){
   const c=G.cells[i];
   if(c&&c.o===o)return null;
   const main=mainOf(o);
+  if(!main.size)return c?null:1; // потерял всё: можно начать заново с любой пустой клетки
   if(!nbrs(i).some(n=>main.has(n)))return null; // от отрезанных кусков расти нельзя
   if(!c)return 1;
   if(!mainOf(c.o).has(i))return 1; // отрезанное берётся как пустое
@@ -301,7 +300,7 @@ const noise=(a,b=0)=>{const v=Math.sin(a*12.9898+b*78.233)*43758.5453;return v-M
 function resize(){
   DPR=Math.min(devicePixelRatio||1,2.5);W=innerWidth;H=innerHeight;
   cv.width=W*DPR;cv.height=H*DPR;
-  const top=104,bot=W<480?132:78; // на телефоне кнопки встают в два ряда
+  const top=104,bot=(W<480?132:78)+NAME_H; // на телефоне кнопки встают в два ряда
   const s=Math.min((W-12)/COLS,(H-top-bot)/ROWS);
   fitView={s,x:(W-s*COLS)/2,y:top+(H-top-bot-s*ROWS)/2};
   view={...fitView};dirty=true;
@@ -364,6 +363,10 @@ function render(){
   // Границы областей и контур
   strokeEdges((a,b)=>{const ra=a>=0?MAP.region[a]:-1,rb=b>=0?MAP.region[b]:-1;return ra>=0&&rb>=0&&ra!==rb},Math.max(1,s*.1));
   strokeEdges((a,b)=>(a>=0&&MAP.mask[a])!==(b>=0&&MAP.mask[b]),Math.max(1.6,s*.17));
+  // Название государства: рисуется на холсте, чтобы попасть и в картинку отчёта
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=GRAPHITE;
+  ctx.font=`${Math.min(NAME_H-4,s*COLS/9)}px Neucha,cursive`;
+  ctx.fillText(STATE_NAME,view.x+s*COLS/2,view.y+s*ROWS+NAME_H/2+2);
   // Подсказки в режиме ручки
   if(pen){
     const P=G.players[YOU];
@@ -683,7 +686,7 @@ updateHud();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)return;
   if(ONLINE){if(ready&&!holding)refresh()}else catchUp();
   updateHud();dirty=true});
-window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,YOU:()=>YOU};
+window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,genMap,nbrs,YOU:()=>YOU,view:()=>view};
 </script>
 </body>
 </html>
