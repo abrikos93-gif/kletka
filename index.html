@@ -582,6 +582,19 @@ $('bNew').onclick=async()=>{
   if(ONLINE)await putPen(true);else save();
 };
 
+/* ---------- Обновление ---------- */
+// Telegram держит старую копию страницы. deploy.ps1 вписывает сюда номер сборки;
+// если на сайте сборка новее, страница перезагружается с новым адресом.
+const BUILD='20261101015127';
+async function checkUpdate(){
+  if(!/^\d+$/.test(BUILD)||pen)return;
+  try{
+    const r=await fetch(location.pathname+'?nocache='+Date.now(),{cache:'no-store'});
+    const m=(await r.text()).match(/const BUILD='(\d+)'/);
+    if(m&&m[1]!==BUILD&&!pen)location.replace(location.pathname+'?v='+m[1]+location.hash);
+  }catch{}
+}
+
 /* ---------- Сервер ---------- */
 let ready=!ONLINE,holding=false,version=0,saveTimer=null,saveChain=Promise.resolve(),holderName='',names=[],busy=false,pollN=0;
 var overShown=false;
@@ -681,9 +694,10 @@ addEventListener('resize',resize);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>dirty=true);
 resize();updateHud();
 if(ONLINE)boot();else catchUp();
-updateHud();
+updateHud();checkUpdate();
 (function loop(){render();requestAnimationFrame(loop)})();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)return;
+  checkUpdate();
   if(ONLINE){if(ready&&!holding)refresh()}else catchUp();
   updateHud();dirty=true});
 window.__k={get G(){return G},get MAP(){return MAP},costFor,applyPaint,undoPaint,mainOf,resetMain,catchUp,genMap,nbrs,YOU:()=>YOU,view:()=>view};
