@@ -194,6 +194,8 @@ function save(){
 }
 const today=()=>Math.floor((Date.now()-G.start)/DAY_MS)+G.simDays;
 const owned=o=>Object.values(G.cells).filter(c=>c.o===o).length;
+// Чья область по цвету: у кого в ней больше клеток; поровну — нейтральная (-1). На правила не влияет.
+const regionLead=g=>{let a=0,b=0;for(const i of g.cells){const c=G.cells[i];if(c)c.o===YOU?a++:c.o===FOE&&b++}return a>b?YOU:b>a?FOE:-1};
 const heldRegions=o=>MAP.regions.filter(g=>g.cells.filter(i=>G.cells[i]&&G.cells[i].o===o).length*2>g.cells.length).length;
 
 /* ---------- Правила ---------- */
@@ -348,6 +350,18 @@ function render(){
   for(let y=((view.y%s)+s)%s;y<H;y+=s){ctx.moveTo(0,y);ctx.lineTo(W,y)}
   ctx.stroke();
   if(!ready)return; // до ответа сервера показываем чистый лист, а не заготовку
+  // Заливка областей светлым цветом лидера: сразу вся область, с цветной сеткой
+  for(const g of MAP.regions){
+    const o=regionLead(g);if(o<0)continue;
+    ctx.fillStyle=INK[o];ctx.strokeStyle=INK[o];ctx.lineWidth=1;
+    for(const i of g.cells){
+      const px=view.x+(i%COLS)*s,py=view.y+((i/COLS)|0)*s;
+      if(px<-s||py<-s||px>W||py>H)continue;
+      ctx.globalAlpha=.07;ctx.fillRect(px,py,s,s);
+      ctx.globalAlpha=.22;ctx.strokeRect(px+.5,py+.5,s-1,s-1);
+    }
+  }
+  ctx.globalAlpha=1;
   // Штриховка
   const t=today();
   for(const key in G.cells){
@@ -379,12 +393,11 @@ function render(){
       else{ctx.fillStyle=PAPER;ctx.fillRect(px+s*.16,py+s*.16,s*.68,s*.68);ctx.fillStyle=INK[YOU];ctx.fillText(c,px+s/2,py+s/2+1)}
     }
   }else{
-    // Подписи областей: чернилами того, кто держит большинство
+    // Подписи областей: чернилами того, чья область по цвету
     ctx.textAlign='center';ctx.textBaseline='middle';
     const fs=Math.max(11,s*.86);ctx.font=`${fs}px Neucha,cursive`;
     for(const g of MAP.regions){
-      const yours=g.cells.filter(i=>G.cells[i]&&G.cells[i].o===YOU).length,foes=g.cells.filter(i=>G.cells[i]&&G.cells[i].o===FOE).length;
-      const col=yours*2>g.cells.length?INK[YOU]:foes*2>g.cells.length?INK[FOE]:'#6d7479';
+      const o=regionLead(g),col=o<0?'#6d7479':INK[o];
       const X=view.x+g.cx*s,Y=view.y+g.cy*s,lines=g.name.split(' ');
       lines.forEach((ln,k)=>{const y=Y+(k-(lines.length-1)/2)*fs;
         ctx.lineWidth=4;ctx.strokeStyle=PAPER;ctx.lineJoin='round';ctx.strokeText(ln,X,y);ctx.fillStyle=col;ctx.fillText(ln,X,y)});
@@ -586,7 +599,7 @@ $('bNew').onclick=async()=>{
 /* ---------- Обновление ---------- */
 // Telegram держит старую копию страницы. deploy.ps1 вписывает сюда номер сборки;
 // если на сайте сборка новее, страница перезагружается с новым адресом.
-const BUILD='20261101020123';
+const BUILD='20261103121702';
 async function checkUpdate(){
   if(!/^\d+$/.test(BUILD)||pen)return;
   try{
