@@ -110,7 +110,7 @@ pre{font:inherit;white-space:pre-wrap;margin:0 0 12px}
   <h2 id="statsTitle">Итоги</h2>
   <p class="verdict" id="verdict" hidden></p>
   <div id="statsBody"></div>
-  <p class="rules">Пустая клетка рядом со своей стоит 1. Чужая рядом со своей стоит 2, а если ей неделя и больше, то 3. Тонкая линия, где у клетки не больше двух своих соседей, на 1 дешевле. Отрезанный кусок выцветает: от него нельзя расти, и он стоит 1, пока не соединишь его с главной территорией. Одна клетка за 10 очков.</p>
+  <p class="rules">Пустая клетка рядом со своей стоит 1. Чужая рядом со своей стоит 2, а если ей неделя и больше, то 3. Отрезанный кусок выцветает: от него нельзя расти, и он стоит 1, пока не соединишь его с главной территорией. Одна клетка за 10 очков.</p>
   <div class="acts">
     <button id="bStatsClose">Закрыть</button>
     <button id="bNextDay">Прожить день (тест)</button>
@@ -224,9 +224,7 @@ function costFor(i,o){
   if(!nbrs(i).some(n=>main.has(n)))return null; // от отрезанных кусков расти нельзя
   if(!c)return 1;
   if(!mainOf(c.o).has(i))return 1; // отрезанное берётся как пустое
-  const cost=today()-c.d>=FORTIFY_AGE?3:2;
-  const support=nbrs(i).filter(n=>G.cells[n]&&G.cells[n].o===c.o).length;
-  return support<=2?cost-1:cost; // одинарная линия слабее сплошного фронта
+  return today()-c.d>=FORTIFY_AGE?3:2; // молодая чужая всегда 2, укреплённая 3
 }
 function applyPaint(i,o){
   const c=G.cells[i], cost=costFor(i,o), P=G.players[o];
@@ -506,11 +504,17 @@ function renderRows(){
   updateSum();
 }
 function draftPoints(){return Object.entries(draft).reduce((s,[n,v])=>{const e=G.exercises.find(x=>x.name===n);return s+v*(e?e.w:1)},0)}
+function sumText(cells,rest){
+  const need=+(REPS_PER_CELL-rest).toFixed(1), pts=n=>n+' '+(Number.isInteger(n)?plural(n,'очко','очка','очков'):'очка');
+  const got=cells?`Это ${cells} ${plural(cells,'клетка','клетки','клеток')}`:'На клетку пока не хватает';
+  if(!rest)return got;
+  return cells?`${got}. В запасе останется ${pts(rest)}, до следующей клетки ещё ${need}`:`${got}: в запасе ${pts(rest)}, нужно ещё ${need}`;
+}
 function updateSum(){
   const P=G.players[YOU],pts=draftPoints(),total=P.carry+pts,cells=Math.floor(total/REPS_PER_CELL);
   const rest=+(total-cells*REPS_PER_CELL).toFixed(1);
   $('sum').textContent=pts||P.carry
-    ?`${cells} ${plural(cells,'клетка','клетки','клеток')}, ещё ${rest} очков из ${REPS_PER_CELL} перейдёт на следующий раз`
+    ?sumText(cells,rest)
     :'Введи повторы, и здесь появятся клетки';
   $('bLogGo').disabled=!pts&&!P.bank;
 }
@@ -599,7 +603,7 @@ $('bNew').onclick=async()=>{
 /* ---------- Обновление ---------- */
 // Telegram держит старую копию страницы. deploy.ps1 вписывает сюда номер сборки;
 // если на сайте сборка новее, страница перезагружается с новым адресом.
-const BUILD='20261103121702';
+const BUILD='20261112171417';
 async function checkUpdate(){
   if(!/^\d+$/.test(BUILD)||pen)return;
   try{
