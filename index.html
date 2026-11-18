@@ -405,6 +405,8 @@ function render(){
 
 /* ---------- Ввод на карте ---------- */
 let pen=false,undoStack=[],session=null,dragKind=null,lastPt=null;
+// Первое касание кистью ждёт: если это щипок, ничего не красим
+let pending=null;
 const ptrs=new Map();let pinch=null,panned=false;
 const cellAt=(x,y)=>{const cx=Math.floor((x-view.x)/view.s),cy=Math.floor((y-view.y)/view.s);
   return cx<0||cy<0||cx>=COLS||cy>=ROWS?-1:idx(cx,cy)};
@@ -420,6 +422,11 @@ function nearestPaintable(x,y){
   }
   return best;
 }
+function startStroke(p){
+  const i=cellAt(p.x,p.y);
+  // Тап по своей клетке не перескакивает на соседнюю: иначе клетка тратится незаметно
+  if(!tryPaint(i)&&!(G.cells[i]&&G.cells[i].o===YOU))tryPaint(nearestPaintable(p.x,p.y));
+}
 function tryPaint(i){
   if(i<0)return false;
   const c=costFor(i,YOU);
@@ -434,10 +441,9 @@ function tryPaint(i){
 }
 cv.addEventListener('pointerdown',e=>{
   cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};lastPt=null;return}
+  if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};lastPt=null;pending=null;return}
   panned=false;lastPt={x:e.clientX,y:e.clientY};
-  if(pen&&ptrs.size===1){dragKind=null;const i=cellAt(e.clientX,e.clientY);
-    if(!tryPaint(i))tryPaint(nearestPaintable(e.clientX,e.clientY))}
+  pending=pen&&ptrs.size===1?{x:e.clientX,y:e.clientY}:null;dragKind=null;
 });
 cv.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
@@ -449,6 +455,11 @@ cv.addEventListener('pointermove',e=>{
   }
   if(!lastPt)return;
   if(pen){
+    if(pending){
+      // Красим, только когда палец заметно сдвинулся или поднят (тап)
+      if(Math.hypot(e.clientX-pending.x,e.clientY-pending.y)<view.s*.4)return;
+      startStroke(pending);lastPt=pending;pending=null;
+    }
     // Шагаем вдоль движения, чтобы быстрая протяжка не перепрыгивала клетки
     const dx=e.clientX-lastPt.x,dy=e.clientY-lastPt.y,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(view.s/3)));
     for(let k=1;k<=n;k++)tryPaint(cellAt(lastPt.x+dx*k/n,lastPt.y+dy*k/n));
@@ -456,7 +467,8 @@ cv.addEventListener('pointermove',e=>{
   lastPt={x:e.clientX,y:e.clientY};
 });
 const up=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;if(!ptrs.size){lastPt=null;dragKind=null}};
-cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('pointerup',e=>{const p=pending;pending=null;up(e);if(p&&pen&&!ptrs.size)startStroke(p)});
+cv.addEventListener('pointercancel',e=>{pending=null;up(e)});
 function zoomAt(x,y,f){
   const s=Math.min(fitView.s*5,Math.max(fitView.s,view.s*f));
   view.x=x-(x-view.x)*s/view.s;view.y=y-(y-view.y)*s/view.s;view.s=s;
@@ -603,7 +615,7 @@ $('bNew').onclick=async()=>{
 /* ---------- Обновление ---------- */
 // Telegram держит старую копию страницы. deploy.ps1 вписывает сюда номер сборки;
 // если на сайте сборка новее, страница перезагружается с новым адресом.
-const BUILD='20261112171417';
+const BUILD='20261118115128';
 async function checkUpdate(){
   if(!/^\d+$/.test(BUILD)||pen)return;
   try{
